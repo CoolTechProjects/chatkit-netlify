@@ -118,6 +118,12 @@
         // poczekaj aż web component będzie zdefiniowany
         await customElements.whenDefined("openai-chatkit");
         const chatkit = document.getElementById("my-chat");
+        chatkit.addEventListener("chatkit.error", (e) => {
+  console.error("CHATKIT ERROR:", e.detail?.error || e);
+  alert("ChatKit error: " + (e.detail?.error?.message || "sprawdź Console"));
+});
+
+        
         chatkit.setOptions(options); // ChatKit konfiguruje się przez setOptions :contentReference[oaicite:3]{index=3}
       }
 
