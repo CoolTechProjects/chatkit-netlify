@@ -3,57 +3,125 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- ChatKit script (OpenAI) -->
+    <script src="https://cdn.platform.openai.com/deployments/chatkit/chatkit.js" async></script>
+    <!-- ↑ źródło: docs ChatKit Quickstart / guide -->
     <title>ChatKit na Netlify</title>
 
-    <!-- ChatKit script -->
-    <script
-      src="https://cdn.platform.openai.com/deployments/chatkit/chatkit.js"
-      async
-    ></script>
+    <style>
+      html, body { height: 100%; margin: 0; }
+      openai-chatkit { display: block; height: 100vh; }
+    </style>
   </head>
 
-  <body style="margin:0; padding:16px; font-family: system-ui, sans-serif;">
-    <h2 style="margin: 0 0 12px 0;">Mój ChatKit</h2>
-
-    <!-- ChatKit web component -->
-    <openai-chatkit id="my-chat" style="display:block; height: 70vh; width: min(420px, 100%); border: 1px solid #ddd; border-radius: 12px;"></openai-chatkit>
+  <body>
+    <openai-chatkit id="my-chat"></openai-chatkit>
 
     <script>
       function getOrCreateUserId() {
         const key = "chatkit_user_id";
         let id = localStorage.getItem(key);
         if (!id) {
-          id = "u_" + Math.random().toString(16).slice(2) + "_" + Date.now().toString(16);
+          id = "user_" + Math.random().toString(16).slice(2) + "_" + Date.now();
           localStorage.setItem(key, id);
         }
         return id;
       }
 
-      async function fetchClientSecret(currentClientSecret) {
-        const user = getOrCreateUserId();
-        const res = await fetch("/.netlify/functions/chatkit-session", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ user, currentClientSecret })
-        });
+      const userId = getOrCreateUserId();
 
-        const data = await res.json();
-        if (!res.ok) throw new Error(data?.error || JSON.stringify(data));
-        return data.client_secret;
+      // ======= TWOJA KONFIGURACJA Z KREATORA (przerobiona na JS) =======
+      const options = {
+        api: {
+          // Najprościej: zawsze prosimy backend Netlify o nowy client_secret.
+          // ChatKit sam wywoła tę funkcję, gdy będzie potrzebował tokenu.
+          async getClientSecret(currentClientSecret) {
+            const res = await fetch("/.netlify/functions/chatkit-session", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                user: userId,
+                currentClientSecret: currentClientSecret || null
+              })
+            });
+            if (!res.ok) {
+              const txt = await res.text();
+              throw new Error("Nie udało się pobrać client_secret: " + txt);
+            }
+            const data = await res.json();
+            return data.client_secret;
+          }
+        },
+
+        // --- Poniżej: wklejone z kreatora (Twoje) ---
+        theme: {
+          colorScheme: "light",
+          radius: "pill",
+          density: "compact",
+          typography: {
+            baseSize: 14,
+            fontFamily:
+              '"OpenAI Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif',
+            fontFamilyMono:
+              'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "DejaVu Sans Mono", "Courier New", monospace',
+            fontSources: [
+              {
+                family: "OpenAI Sans",
+                src: "https://cdn.openai.com/common/fonts/openai-sans/v2/OpenAISans-Regular.woff2",
+                weight: 400,
+                style: "normal",
+                display: "swap"
+              }
+              // Jeśli kreator dał więcej fontSources, dopisz je tutaj.
+            ]
+          }
+        },
+
+        composer: {
+          attachments: {
+            enabled: true,
+            maxCount: 5,
+            // maxSize jest w BAJTACH (u Ciebie: 10 MB) :contentReference[oaicite:2]{index=2}
+            maxSize: 10485760
+          },
+          tools: [
+            {
+              id: "search_docs",
+              label: "Search docs",
+              shortLabel: "Docs",
+              placeholderOverride: "Search documentation",
+              icon: "circle-question",
+              pinned: false
+            }
+            // Jeśli kreator dodał więcej tools, dopisz je tutaj.
+          ]
+        },
+
+        startScreen: {
+          greeting: "",
+          prompts: [
+            {
+              icon: "circle-question",
+              label: "What is ChatKit?",
+              prompt: "What is ChatKit?"
+            }
+            // Jeśli kreator dodał więcej prompts, dopisz je tutaj.
+          ]
+        }
+
+        // Możesz tu też wkleić inne sekcje z kreatora (header, history, threadItemActions itd.).
+      };
+      // ================================================================
+
+      async function mount() {
+        // poczekaj aż web component będzie zdefiniowany
+        await customElements.whenDefined("openai-chatkit");
+        const chatkit = document.getElementById("my-chat");
+        chatkit.setOptions(options); // ChatKit konfiguruje się przez setOptions :contentReference[oaicite:3]{index=3}
       }
 
-      window.addEventListener("DOMContentLoaded", async () => {
-        // Poczekaj aż web component się załaduje
-        await customElements.whenDefined("openai-chatkit");
-
-        const chatkit = document.getElementById("my-chat");
-        chatkit.setOptions({
-          api: {
-            // ChatKit będzie wołał to także do odświeżenia sesji – zwracamy nowy secret zawsze
-            getClientSecret: (current) => fetchClientSecret(current),
-          },
-        });
-      });
+      mount().catch(console.error);
     </script>
   </body>
 </html>
