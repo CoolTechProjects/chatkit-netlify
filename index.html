@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ChatKit na Netlify</title>
+
+    <!-- ChatKit script -->
+    <script
+      src="https://cdn.platform.openai.com/deployments/chatkit/chatkit.js"
+      async
+    ></script>
+  </head>
+
+  <body style="margin:0; padding:16px; font-family: system-ui, sans-serif;">
+    <h2 style="margin: 0 0 12px 0;">Mój ChatKit</h2>
+
+    <!-- ChatKit web component -->
+    <openai-chatkit id="my-chat" style="display:block; height: 70vh; width: min(420px, 100%); border: 1px solid #ddd; border-radius: 12px;"></openai-chatkit>
+
+    <script>
+      function getOrCreateUserId() {
+        const key = "chatkit_user_id";
+        let id = localStorage.getItem(key);
+        if (!id) {
+          id = "u_" + Math.random().toString(16).slice(2) + "_" + Date.now().toString(16);
+          localStorage.setItem(key, id);
+        }
+        return id;
+      }
+
+      async function fetchClientSecret(currentClientSecret) {
+        const user = getOrCreateUserId();
+        const res = await fetch("/.netlify/functions/chatkit-session", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ user, currentClientSecret })
+        });
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error || JSON.stringify(data));
+        return data.client_secret;
+      }
+
+      window.addEventListener("DOMContentLoaded", async () => {
+        // Poczekaj aż web component się załaduje
+        await customElements.whenDefined("openai-chatkit");
+
+        const chatkit = document.getElementById("my-chat");
+        chatkit.setOptions({
+          api: {
+            // ChatKit będzie wołał to także do odświeżenia sesji – zwracamy nowy secret zawsze
+            getClientSecret: (current) => fetchClientSecret(current),
+          },
+        });
+      });
+    </script>
+  </body>
+</html>
