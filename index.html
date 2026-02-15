@@ -6,6 +6,19 @@
     <title>ChatKit na Netlify</title>
 
     <style>
+      
+      /* ✅ Najważniejsze: żeby 100% nie liczyło się "plus padding/border" */
+*, *::before, *::after { box-sizing: border-box; }
+
+form { margin: 0; } /* opcjonalnie: usuwa domyślne marginesy */
+
+input, button {
+  box-sizing: border-box;
+  max-width: 100%;
+  display: block;
+}
+
+      
       html, body { height: 100%; margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
       #loginScreen {
         height: 100vh; display: flex; align-items: center; justify-content: center;
