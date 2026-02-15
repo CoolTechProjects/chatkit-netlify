@@ -251,12 +251,27 @@
           },
         },
 
-        composer: {
+  /*      composer: {
           attachments: {
             enabled: true,
             maxCount: 5,
             maxSize: 10485760,
+          },*/
+
+        composer: {
+          attachments: {
+            enabled: true,
+            uploadStrategy: { type: "hosted" },
+            maxCount: 5,
+            maxSize: 10485760,
+            accept: {
+              "application/pdf": [".pdf"],
+              "text/plain": [".txt", ".md", ".csv"],
+              "image/*": [".png", ".jpg", ".jpeg", ".webp"],
+            },
           },
+
+        
           tools: [
             {
               id: "search_docs",
