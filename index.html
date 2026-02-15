@@ -1,154 +1,56 @@
+Skip to content
+CoolTechProjects
+chatkit-netlify
+Repository navigation
+Code
+Issues
+Pull requests
+Actions
+Projects
+Wiki
+Security
+Insights
+Settings
+Files
+Go to file
+t
+netlify
+index.html
+netlify.toml
+chatkit-netlify
+/index.html
+CoolTechProjects
+CoolTechProjects
+Update index.html
+c8eeb07
+ · 
+2 hours ago
+
+Code
+
+Blame
+148 lines (134 loc) · 4.91 KB
 <!doctype html>
 <html lang="pl">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- ChatKit script (OpenAI) -->
+    <script src="https://cdn.platform.openai.com/deployments/chatkit/chatkit.js" async></script>
+    <!-- ↑ źródło: docs ChatKit Quickstart / guide -->
     <title>ChatKit na Netlify</title>
 
     <style>
-      
-      /* ✅ Najważniejsze: żeby 100% nie liczyło się "plus padding/border" */
-*, *::before, *::after { box-sizing: border-box; }
-
-form { margin: 0; } /* opcjonalnie: usuwa domyślne marginesy */
-
-input, button {
-  box-sizing: border-box;
-  max-width: 100%;
-  display: block;
-}
-
-      
-      html, body { height: 100%; margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
-      #loginScreen {
-        height: 100vh; display: flex; align-items: center; justify-content: center;
-        padding: 16px; box-sizing: border-box;
-      }
-      .card {
-        width: min(420px, 100%);
-        border: 1px solid rgba(0,0,0,.12);
-        border-radius: 14px;
-        padding: 18px;
-        box-shadow: 0 6px 24px rgba(0,0,0,.08);
-        background: #fff;
-      }
-      .row { margin-top: 10px; }
-      label { display: block; font-size: 12px; opacity: .75; margin-bottom: 4px; }
-      input {
-        width: 100%; padding: 10px 12px; border-radius: 10px;
-        border: 1px solid rgba(0,0,0,.18); outline: none;
-      }
-      button {
-        width: 100%; margin-top: 14px; padding: 10px 12px; border-radius: 10px;
-        border: 0; cursor: pointer;
-      }
-      .err { margin-top: 10px; color: #b00020; font-size: 13px; min-height: 18px; }
-      #appScreen { display: none; height: 100vh; }
+      html, body { height: 100%; margin: 0; }
       openai-chatkit { display: block; height: 100vh; }
-      #topbar {
-        position: fixed; top: 10px; right: 10px; z-index: 9999;
-        display: none;
-      }
-      #logoutBtn {
-        padding: 8px 10px; border-radius: 10px; border: 1px solid rgba(0,0,0,.18);
-        background: #fff; cursor: pointer;
-      }
     </style>
   </head>
 
   <body>
-    <!-- LOGIN SCREEN -->
-    <div id="loginScreen">
-      <div class="card">
-        <div style="font-size:18px; font-weight:600;">Dostęp chroniony</div>
-        <div style="margin-top:6px; opacity:.8; font-size:13px;">
-          Zaloguj się, aby otworzyć czat.
-        </div>
-
-        <form id="loginForm" autocomplete="off">
-          <div class="row">
-            <label for="u">Login</label>
-            <input id="u" name="u" type="text" required />
-          </div>
-          <div class="row">
-            <label for="p">Hasło</label>
-            <input id="p" name="p" type="password" required />
-          </div>
-
-          <button type="submit">Zaloguj</button>
-          <div id="loginError" class="err"></div>
-        </form>
-      </div>
-    </div>
-
-    <!-- APP -->
-    <div id="topbar">
-      <button id="logoutBtn" type="button">Wyloguj</button>
-    </div>
-    <div id="appScreen">
-      <openai-chatkit id="my-chat"></openai-chatkit>
-    </div>
+    <openai-chatkit id="my-chat"></openai-chatkit>
 
     <script>
-      // ====== USTAWIENIA LOGOWANIA ======
-      // Tu nie hardcodujemy hasła w kodzie strony.
-      // Przekazujemy je do Netlify Function przez Basic Auth header,
-      // a funkcja sama porówna do env var BASIC_USER/BASIC_PASS.
-      const AUTH_STORAGE_KEY = "nis2_basic_auth_token";
-
-      function encodeBase64Utf8(value) {
-        const bytes = new TextEncoder().encode(value);
-        let binary = "";
-        bytes.forEach((b) => {
-          binary += String.fromCharCode(b);
-        });
-        return btoa(binary);
-      }
-
-      function setAuthToken(user, pass) {
-        const token = encodeBase64Utf8(`${user}:${pass}`);
-        sessionStorage.setItem(AUTH_STORAGE_KEY, token);
-        return token;
-      }
-      function getAuthToken() {
-        return sessionStorage.getItem(AUTH_STORAGE_KEY);
-      }
-      function clearAuthToken() {
-        sessionStorage.removeItem(AUTH_STORAGE_KEY);
-      }
-
-      function showLogin(errorMsg = "") {
-        document.getElementById("loginScreen").style.display = "flex";
-        document.getElementById("appScreen").style.display = "none";
-        document.getElementById("topbar").style.display = "none";
-        document.getElementById("loginError").textContent = errorMsg;
-      }
-
-      function showApp() {
-        document.getElementById("loginScreen").style.display = "none";
-        document.getElementById("appScreen").style.display = "block";
-        document.getElementById("topbar").style.display = "block";
-      }
-
-      function loadChatKitScript() {
-        return new Promise((resolve, reject) => {
-          if (window.customElements?.get("openai-chatkit")) return resolve();
-          const existing = document.querySelector('script[data-chatkit="1"]');
-          if (existing) {
-            existing.addEventListener("load", resolve, { once: true });
-            existing.addEventListener("error", reject, { once: true });
-            return;
-          }
-          const s = document.createElement("script");
-          s.src = "https://cdn.platform.openai.com/deployments/chatkit/chatkit.js";
-          s.async = true;
-          s.dataset.chatkit = "1";
-          s.onload = () => resolve();
-          s.onerror = () => reject(new Error("Nie udało się załadować skryptu ChatKit."));
-          document.head.appendChild(s);
-        });
-      }
-
       function getOrCreateUserId() {
         const key = "chatkit_user_id";
         let id = localStorage.getItem(key);
@@ -161,47 +63,30 @@ input, button {
 
       const userId = getOrCreateUserId();
 
-      // ======= TWOJA KONFIGURACJA (prawie bez zmian) =======
-      let prefetchedClientSecret = null;
-
-      async function fetchClientSecret(currentClientSecret = null) {
-        if (!currentClientSecret && prefetchedClientSecret) {
-          const cached = prefetchedClientSecret;
-          prefetchedClientSecret = null;
-          return cached;
-        }
-
-        const token = getAuthToken();
-        if (!token) throw new Error("Brak autoryzacji. Zaloguj się ponownie.");
-
-        const res = await fetch("/.netlify/functions/chatkit-session", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": "Basic " + token
-          },
-          body: JSON.stringify({
-            user: userId,
-            currentClientSecret: currentClientSecret || null
-          })
-        });
-
-        if (!res.ok) {
-          const txt = await res.text();
-          throw new Error("Nie udało się pobrać client_secret: " + txt);
-        }
-
-        const data = await res.json();
-        return data.client_secret;
-      }
-
+      // ======= TWOJA KONFIGURACJA Z KREATORA (przerobiona na JS) =======
       const options = {
         api: {
+          // Najprościej: zawsze prosimy backend Netlify o nowy client_secret.
+          // ChatKit sam wywoła tę funkcję, gdy będzie potrzebował tokenu.
           async getClientSecret(currentClientSecret) {
-            return fetchClientSecret(currentClientSecret);
+            const res = await fetch("/.netlify/functions/chatkit-session", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                user: userId,
+                currentClientSecret: currentClientSecret || null
+              })
+            });
+            if (!res.ok) {
+              const txt = await res.text();
+              throw new Error("Nie udało się pobrać client_secret: " + txt);
+            }
+            const data = await res.json();
+            return data.client_secret;
           }
         },
 
+        // --- Poniżej: wklejone z kreatora (Twoje) ---
         theme: {
           colorScheme: "light",
           radius: "pill",
@@ -220,12 +105,18 @@ input, button {
                 style: "normal",
                 display: "swap"
               }
+              // Jeśli kreator dał więcej fontSources, dopisz je tutaj.
             ]
           }
         },
 
         composer: {
-          attachments: { enabled: true, maxCount: 5, maxSize: 10485760 },
+          attachments: {
+            enabled: true,
+            maxCount: 5,
+            // maxSize jest w BAJTACH (u Ciebie: 10 MB) :contentReference[oaicite:2]{index=2}
+            maxSize: 10485760
+          },
           tools: [
             {
               id: "search_docs",
@@ -235,77 +126,56 @@ input, button {
               icon: "circle-question",
               pinned: false
             }
+            // Jeśli kreator dodał więcej tools, dopisz je tutaj.
           ]
         },
 
         startScreen: {
           greeting: "",
           prompts: [
-            { icon: "circle-question", label: "Szybka analiza luk (gap assessment) pod NIS2", prompt: "Szybka analiza luk (gap assessment) pod NIS2" },
-            { icon: "circle-question", label: "Plan wdrożenia / roadmapa (np. 30/60/90 dni albo 6–12 miesięcy)", prompt: "Plan wdrożenia / roadmapa (np. 30/60/90 dni albo 6–12 miesięcy)" },
-            { icon: "circle-question", label: "Mapowanie wymagań NIS2 ↔ ISO 27001/27002 ↔ RODO ↔ ISO 22301", prompt: "Mapowanie wymagań NIS2 ↔ ISO 27001/27002 ↔ RODO ↔ ISO 22301" },
-            { icon: "circle-question", label: "Checklisty dowodowe: jakie dokumenty i artefakty przygotować na audyt / kontrolę", prompt: "Checklisty dowodowe: jakie dokumenty i artefakty przygotować na audyt / kontrolę" },
-            { icon: "circle-question", label: "Dostawcy i łańcuch dostaw: wymagania, ocena ryzyka, klauzule i monitoring", prompt: "Dostawcy i łańcuch dostaw: wymagania, ocena ryzyka, klauzule i monitoring" }
+            {
+              icon: "circle-question",
+              label: "What is ChatKit?",
+              prompt: "What is ChatKit?"
+            }
+              {
+              icon: "circle-question",
+              label: "What is ChatKit?",
+              prompt: "What is ChatKit?"
+            }
+              {
+              icon: "circle-question",
+              label: "What is ChatKit?",
+              prompt: "What is ChatKit?"
+            }
+              {
+              icon: "circle-question",
+              label: "What is ChatKit?",
+              prompt: "What is ChatKit?"
+            }
+            // Jeśli kreator dodał więcej prompts, dopisz je tutaj.
           ]
         }
+
+        // Możesz tu też wkleić inne sekcje z kreatora (header, history, threadItemActions itd.).
       };
-      // ======================================================
+      // ================================================================
 
-      async function mountChat() {
-        await loadChatKitScript();
+      async function mount() {
+        // poczekaj aż web component będzie zdefiniowany
         await customElements.whenDefined("openai-chatkit");
-
         const chatkit = document.getElementById("my-chat");
         chatkit.addEventListener("chatkit.error", (e) => {
-          console.error("CHATKIT ERROR:", e.detail?.error || e);
-          alert("ChatKit error: " + (e.detail?.error?.message || "sprawdź Console"));
-        });
+  console.error("CHATKIT ERROR:", e.detail?.error || e);
+  alert("ChatKit error: " + (e.detail?.error?.message || "sprawdź Console"));
+});
 
-        if (typeof chatkit.setOptions === "function") {
-          chatkit.setOptions(options);
-        } else {
-          chatkit.options = options;
-        }
+        
+        chatkit.setOptions(options); // ChatKit konfiguruje się przez setOptions :contentReference[oaicite:3]{index=3}
       }
 
-      async function tryStart() {
-        try {
-          prefetchedClientSecret = await fetchClientSecret();
-          showApp();
-          await mountChat();
-        } catch (err) {
-          console.error(err);
-          prefetchedClientSecret = null;
-          clearAuthToken();
-          showLogin("Nie udało się zalogować lub uruchomić czatu.");
-        }
-      }
-
-      // Obsługa logowania
-      document.getElementById("loginForm").addEventListener("submit", async (e) => {
-        e.preventDefault();
-        const u = document.getElementById("u").value.trim();
-        const p = document.getElementById("p").value;
-
-        // Ustaw token (backend zweryfikuje w Function)
-        setAuthToken(u, p);
-
-        // Spróbuj odpalić aplikację (jeśli auth nie przejdzie, wrócimy do logowania)
-        await tryStart();
-      });
-
-      // Wylogowanie
-      document.getElementById("logoutBtn").addEventListener("click", () => {
-        clearAuthToken();
-        location.reload();
-      });
-
-      // Auto-start jeśli token już jest w sesji
-      if (getAuthToken()) {
-        tryStart();
-      } else {
-        showLogin();
-      }
+      mount().catch(console.error);
     </script>
   </body>
 </html>
+ 
