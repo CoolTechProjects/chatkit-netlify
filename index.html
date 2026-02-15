@@ -4,57 +4,231 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 
-    <!-- ChatKit script (OpenAI) -->
     <script src="https://cdn.platform.openai.com/deployments/chatkit/chatkit.js" async></script>
-    <!-- ↑ źródło: docs ChatKit Quickstart / guide -->
     <title>ChatKit na Netlify</title>
 
     <style>
-      html, body { height: 100%; margin: 0; }
-      openai-chatkit { display: block; height: 100vh; }
+      :root {
+        color-scheme: light;
+      }
+
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+        background: #f6f7fb;
+      }
+
+      #login-screen {
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        box-sizing: border-box;
+      }
+
+      #login-box {
+        width: 100%;
+        max-width: 360px;
+        background: #fff;
+        border-radius: 12px;
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
+        padding: 22px;
+        box-sizing: border-box;
+      }
+
+      #login-box h1 {
+        margin: 0 0 16px;
+        font-size: 1.25rem;
+      }
+
+      #login-box label {
+        display: block;
+        margin-top: 10px;
+        margin-bottom: 6px;
+        font-size: 0.9rem;
+      }
+
+      #login-box input {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 10px 12px;
+        border: 1px solid #d2d8e3;
+        border-radius: 8px;
+        font-size: 0.95rem;
+      }
+
+      #login-box button {
+        width: 100%;
+        margin-top: 14px;
+        border: 0;
+        border-radius: 8px;
+        padding: 10px 12px;
+        font-size: 0.95rem;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      #login-btn {
+        background: #1b75ff;
+        color: white;
+      }
+
+      #login-error {
+        margin-top: 10px;
+        min-height: 20px;
+        color: #b42318;
+        font-size: 0.9rem;
+      }
+
+      #chat-screen {
+        height: 100vh;
+        position: relative;
+      }
+
+      #logout-btn {
+        position: absolute;
+        top: 12px;
+        right: 12px;
+        z-index: 20;
+        border: 0;
+        border-radius: 8px;
+        padding: 8px 10px;
+        font-size: 0.85rem;
+        cursor: pointer;
+        background: #111827;
+        color: white;
+      }
+
+      openai-chatkit {
+        display: block;
+        height: 100vh;
+      }
+
+      [hidden] {
+        display: none !important;
+      }
     </style>
   </head>
 
   <body>
-    <openai-chatkit id="my-chat"></openai-chatkit>
+    <section id="login-screen" hidden>
+      <div id="login-box">
+        <h1>Login</h1>
+        <form id="login-form">
+          <label for="username">User</label>
+          <input id="username" name="username" type="text" autocomplete="username" required />
+
+          <label for="password">Password</label>
+          <input id="password" name="password" type="password" autocomplete="current-password" required />
+
+          <button id="login-btn" type="submit">Zaloguj</button>
+          <div id="login-error" role="alert"></div>
+        </form>
+      </div>
+    </section>
+
+    <section id="chat-screen" hidden>
+      <button id="logout-btn" type="button">Wyloguj</button>
+      <openai-chatkit id="my-chat"></openai-chatkit>
+    </section>
 
     <script>
+      const AUTH_STORAGE_KEY = "chatkit_basic_auth";
+      const USER_ID_STORAGE_KEY = "chatkit_user_id";
+
+      const loginScreen = document.getElementById("login-screen");
+      const chatScreen = document.getElementById("chat-screen");
+      const loginForm = document.getElementById("login-form");
+      const loginError = document.getElementById("login-error");
+      const logoutBtn = document.getElementById("logout-btn");
+
+      let chatMounted = false;
+
       function getOrCreateUserId() {
-        const key = "chatkit_user_id";
-        let id = localStorage.getItem(key);
+        let id = localStorage.getItem(USER_ID_STORAGE_KEY);
         if (!id) {
           id = "user_" + Math.random().toString(16).slice(2) + "_" + Date.now();
-          localStorage.setItem(key, id);
+          localStorage.setItem(USER_ID_STORAGE_KEY, id);
         }
         return id;
       }
 
+      function getAuthToken() {
+        return sessionStorage.getItem(AUTH_STORAGE_KEY);
+      }
+
+      function setAuthToken(username, password) {
+        sessionStorage.setItem(AUTH_STORAGE_KEY, btoa(`${username}:${password}`));
+      }
+
+      function clearAuthToken() {
+        sessionStorage.removeItem(AUTH_STORAGE_KEY);
+      }
+
+      function showLogin(message = "") {
+        loginScreen.hidden = false;
+        chatScreen.hidden = true;
+        loginError.textContent = message;
+      }
+
+      function showChat() {
+        loginScreen.hidden = true;
+        chatScreen.hidden = false;
+        loginError.textContent = "";
+      }
+
+      async function verifyCredentials(username, password) {
+        const res = await fetch("/.netlify/functions/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ username, password }),
+        });
+
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || "Logowanie nie powiodlo sie.");
+        }
+      }
+
       const userId = getOrCreateUserId();
 
-      // ======= TWOJA KONFIGURACJA Z KREATORA (przerobiona na JS) =======
       const options = {
         api: {
-          // Najprościej: zawsze prosimy backend Netlify o nowy client_secret.
-          // ChatKit sam wywoła tę funkcję, gdy będzie potrzebował tokenu.
           async getClientSecret(currentClientSecret) {
+            const authToken = getAuthToken();
+            if (!authToken) {
+              throw new Error("Brak sesji logowania. Zaloguj sie ponownie.");
+            }
+
             const res = await fetch("/.netlify/functions/chatkit-session", {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Basic ${authToken}`,
+              },
               body: JSON.stringify({
                 user: userId,
-                currentClientSecret: currentClientSecret || null
-              })
+                currentClientSecret: currentClientSecret || null,
+              }),
             });
+
             if (!res.ok) {
-              const txt = await res.text();
-              throw new Error("Nie udało się pobrać client_secret: " + txt);
+              const data = await res.json().catch(() => ({}));
+              if (res.status === 401) {
+                clearAuthToken();
+                showLogin("Sesja wygasla. Zaloguj sie ponownie.");
+              }
+              throw new Error(data.error || "Nie udalo sie pobrac client_secret.");
             }
+
             const data = await res.json();
             return data.client_secret;
-          }
+          },
         },
 
-        // --- Poniżej: wklejone z kreatora (Twoje) ---
         theme: {
           colorScheme: "light",
           radius: "pill",
@@ -71,19 +245,17 @@
                 src: "https://cdn.openai.com/common/fonts/openai-sans/v2/OpenAISans-Regular.woff2",
                 weight: 400,
                 style: "normal",
-                display: "swap"
-              }
-              // Jeśli kreator dał więcej fontSources, dopisz je tutaj.
-            ]
-          }
+                display: "swap",
+              },
+            ],
+          },
         },
 
         composer: {
           attachments: {
             enabled: true,
             maxCount: 5,
-            // maxSize jest w BAJTACH (u Ciebie: 10 MB) :contentReference[oaicite:2]{index=2}
-            maxSize: 10485760
+            maxSize: 10485760,
           },
           tools: [
             {
@@ -92,10 +264,9 @@
               shortLabel: "Docs",
               placeholderOverride: "Search documentation",
               icon: "circle-question",
-              pinned: false
-            }
-            // Jeśli kreator dodał więcej tools, dopisz je tutaj.
-          ]
+              pinned: false,
+            },
+          ],
         },
 
         startScreen: {
@@ -104,45 +275,76 @@
             {
               icon: "circle-question",
               label: "What is ChatKit?",
-              prompt: "What is ChatKit?"
+              prompt: "What is ChatKit?",
             },
-              {
-              icon: "circle-question",
-              label: "What is ChatKit?",
-              prompt: "What is ChatKit?"
-            },
-              {
-              icon: "circle-question",
-              label: "What is ChatKit?",
-              prompt: "What is ChatKit?"
-            },
-              {
-              icon: "circle-question",
-              label: "What is ChatKit?",
-              prompt: "What is ChatKit?"
-            },
-            // Jeśli kreator dodał więcej prompts, dopisz je tutaj.
-          ]
+          ],
+        },
+      };
+
+      async function mountChat() {
+        if (chatMounted) {
+          return;
         }
 
-        // Możesz tu też wkleić inne sekcje z kreatora (header, history, threadItemActions itd.).
-      };
-      // ================================================================
-
-      async function mount() {
-        // poczekaj aż web component będzie zdefiniowany
         await customElements.whenDefined("openai-chatkit");
         const chatkit = document.getElementById("my-chat");
-        chatkit.addEventListener("chatkit.error", (e) => {
-  console.error("CHATKIT ERROR:", e.detail?.error || e);
-  alert("ChatKit error: " + (e.detail?.error?.message || "sprawdź Console"));
-});
 
-        
-        chatkit.setOptions(options); // ChatKit konfiguruje się przez setOptions :contentReference[oaicite:3]{index=3}
+        chatkit.addEventListener("chatkit.error", (e) => {
+          console.error("CHATKIT ERROR:", e.detail?.error || e);
+          alert("ChatKit error: " + (e.detail?.error?.message || "sprawdz Console"));
+        });
+
+        chatkit.setOptions(options);
+        chatMounted = true;
       }
 
-      mount().catch(console.error);
+      async function startChat() {
+        showChat();
+
+        try {
+          await mountChat();
+        } catch (err) {
+          console.error(err);
+          clearAuthToken();
+          showLogin("Nie udalo sie uruchomic chatu. Zaloguj sie ponownie.");
+        }
+      }
+
+      loginForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+
+        const username = document.getElementById("username").value.trim();
+        const password = document.getElementById("password").value;
+
+        if (!username || !password) {
+          showLogin("Wpisz user i haslo.");
+          return;
+        }
+
+        try {
+          await verifyCredentials(username, password);
+          setAuthToken(username, password);
+          await startChat();
+        } catch (err) {
+          clearAuthToken();
+          showLogin(err.message || "Logowanie nie powiodlo sie.");
+        }
+      });
+
+      logoutBtn.addEventListener("click", () => {
+        clearAuthToken();
+        showLogin();
+      });
+
+      if (getAuthToken()) {
+        startChat().catch((err) => {
+          console.error(err);
+          clearAuthToken();
+          showLogin("Sesja wygasla. Zaloguj sie ponownie.");
+        });
+      } else {
+        showLogin();
+      }
     </script>
   </body>
 </html>
