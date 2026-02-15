@@ -96,8 +96,17 @@ input, button {
       // a funkcja sama porówna do env var BASIC_USER/BASIC_PASS.
       const AUTH_STORAGE_KEY = "nis2_basic_auth_token";
 
+      function encodeBase64Utf8(value) {
+        const bytes = new TextEncoder().encode(value);
+        let binary = "";
+        bytes.forEach((b) => {
+          binary += String.fromCharCode(b);
+        });
+        return btoa(binary);
+      }
+
       function setAuthToken(user, pass) {
-        const token = btoa(`${user}:${pass}`);
+        const token = encodeBase64Utf8(`${user}:${pass}`);
         sessionStorage.setItem(AUTH_STORAGE_KEY, token);
         return token;
       }
@@ -153,30 +162,43 @@ input, button {
       const userId = getOrCreateUserId();
 
       // ======= TWOJA KONFIGURACJA (prawie bez zmian) =======
+      let prefetchedClientSecret = null;
+
+      async function fetchClientSecret(currentClientSecret = null) {
+        if (!currentClientSecret && prefetchedClientSecret) {
+          const cached = prefetchedClientSecret;
+          prefetchedClientSecret = null;
+          return cached;
+        }
+
+        const token = getAuthToken();
+        if (!token) throw new Error("Brak autoryzacji. Zaloguj się ponownie.");
+
+        const res = await fetch("/.netlify/functions/chatkit-session", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Basic " + token
+          },
+          body: JSON.stringify({
+            user: userId,
+            currentClientSecret: currentClientSecret || null
+          })
+        });
+
+        if (!res.ok) {
+          const txt = await res.text();
+          throw new Error("Nie udało się pobrać client_secret: " + txt);
+        }
+
+        const data = await res.json();
+        return data.client_secret;
+      }
+
       const options = {
         api: {
           async getClientSecret(currentClientSecret) {
-            const token = getAuthToken();
-            if (!token) throw new Error("Brak autoryzacji. Zaloguj się ponownie.");
-
-            const res = await fetch("/.netlify/functions/chatkit-session", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "Authorization": "Basic " + token
-              },
-              body: JSON.stringify({
-                user: userId,
-                currentClientSecret: currentClientSecret || null
-              })
-            });
-
-            if (!res.ok) {
-              const txt = await res.text();
-              throw new Error("Nie udało się pobrać client_secret: " + txt);
-            }
-            const data = await res.json();
-            return data.client_secret;
+            return fetchClientSecret(currentClientSecret);
           }
         },
 
@@ -239,17 +261,23 @@ input, button {
           alert("ChatKit error: " + (e.detail?.error?.message || "sprawdź Console"));
         });
 
-        chatkit.setOptions(options);
+        if (typeof chatkit.setOptions === "function") {
+          chatkit.setOptions(options);
+        } else {
+          chatkit.options = options;
+        }
       }
 
       async function tryStart() {
-        showApp();
         try {
+          prefetchedClientSecret = await fetchClientSecret();
+          showApp();
           await mountChat();
         } catch (err) {
           console.error(err);
+          prefetchedClientSecret = null;
           clearAuthToken();
-          showLogin("Błędny login/hasło lub brak dostępu.");
+          showLogin("Nie udało się zalogować lub uruchomić czatu.");
         }
       }
 
