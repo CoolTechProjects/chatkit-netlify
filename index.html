@@ -3,389 +3,150 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
     <script src="https://cdn.platform.openai.com/deployments/chatkit/chatkit.js" async></script>
     <title>ChatKit na Netlify</title>
-
     <style>
-      :root {
-        color-scheme: light;
-      }
-
-      html,
-      body {
-        height: 100%;
-        margin: 0;
-        font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-        background: #f6f7fb;
-      }
-
-      #login-screen {
-        min-height: 100vh;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        padding: 24px;
-        box-sizing: border-box;
-      }
-
-      #login-box {
-        width: 100%;
-        max-width: 360px;
-        background: #fff;
-        border-radius: 12px;
-        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
-        padding: 22px;
-        box-sizing: border-box;
-      }
-
-      #login-box h1 {
-        margin: 0 0 16px;
-        font-size: 1.25rem;
-      }
-
-      #login-box label {
-        display: block;
-        margin-top: 10px;
-        margin-bottom: 6px;
-        font-size: 0.9rem;
-      }
-
-      #login-box input {
-        width: 100%;
-        box-sizing: border-box;
-        padding: 10px 12px;
-        border: 1px solid #d2d8e3;
-        border-radius: 8px;
-        font-size: 0.95rem;
-      }
-
-      #login-box button {
-        width: 100%;
-        margin-top: 14px;
-        border: 0;
-        border-radius: 8px;
-        padding: 10px 12px;
-        font-size: 0.95rem;
-        font-weight: 600;
-        cursor: pointer;
-      }
-
-      #login-btn {
-        background: #1b75ff;
-        color: white;
-      }
-
-      #login-error {
-        margin-top: 10px;
-        min-height: 20px;
-        color: #b42318;
-        font-size: 0.9rem;
-      }
-
-      #chat-screen {
-        height: 100vh;
-        position: relative;
-      }
-
-      #logout-btn {
-        position: absolute;
-        top: 12px;
-        right: 12px;
-        z-index: 20;
-        border: 0;
-        border-radius: 8px;
-        padding: 8px 10px;
-        font-size: 0.85rem;
-        cursor: pointer;
-        background: #111827;
-        color: white;
-      }
-
-      openai-chatkit {
-        display: block;
-        height: 100vh;
-      }
-
-      [hidden] {
-        display: none !important;
-      }
+      body { margin: 0; font-family: system-ui, sans-serif; background: #f6f7fb; color: #0f172a; }
+      .layout { display: grid; grid-template-columns: 220px 1fr; min-height: 100vh; }
+      .sidebar { background: #111827; color: #fff; padding: 18px; }
+      .sidebar a, .sidebar button { display:block; width:100%; text-align:left; margin:6px 0; padding:9px 10px; border-radius:8px; border:0; background:transparent; color:inherit; text-decoration:none; cursor:pointer; }
+      .sidebar a.active { background: #2563eb; }
+      .content { padding: 24px; }
+      .card { background:#fff; border-radius:12px; padding:20px; box-shadow: 0 10px 20px rgba(0,0,0,.06); max-width:520px; }
+      input, button, select { font: inherit; }
+      input { width:100%; padding:10px; margin-top:6px; margin-bottom:10px; border:1px solid #cbd5e1; border-radius:8px; box-sizing:border-box; }
+      button.primary { background:#1d4ed8; color:white; border:0; border-radius:8px; padding:10px 12px; cursor:pointer; }
+      .muted { color:#64748b; }
+      #chat-wrap { height: calc(100vh - 48px); }
+      openai-chatkit { display:block; height:100%; }
+      .row { display:flex; gap:10px; flex-wrap: wrap; }
     </style>
   </head>
-
   <body>
-    <section id="login-screen" hidden>
-      <div id="login-box">
-        <h1>Login</h1>
-        <form id="login-form">
-          <label for="username">User</label>
-          <input id="username" name="username" type="text" autocomplete="username" required />
-
-          <label for="password">Password</label>
-          <input id="password" name="password" type="password" autocomplete="current-password" required />
-
-          <button id="login-btn" type="submit">Zaloguj</button>
-          <div id="login-error" role="alert"></div>
-        </form>
-      </div>
-    </section>
-
-    <section id="chat-screen" hidden>
-      <button id="logout-btn" type="button">Wyloguj</button>
-      <openai-chatkit id="my-chat"></openai-chatkit>
-    </section>
-
+    <div id="app"></div>
     <script>
-      const AUTH_STORAGE_KEY = "chatkit_basic_auth";
-      const USER_ID_STORAGE_KEY = "chatkit_user_id";
-
-      const loginScreen = document.getElementById("login-screen");
-      const chatScreen = document.getElementById("chat-screen");
-      const loginForm = document.getElementById("login-form");
-      const loginError = document.getElementById("login-error");
-      const logoutBtn = document.getElementById("logout-btn");
-
+      let me = null;
       let chatMounted = false;
 
-      function getOrCreateUserId() {
-        let id = localStorage.getItem(USER_ID_STORAGE_KEY);
-        if (!id) {
-          id = "user_" + Math.random().toString(16).slice(2) + "_" + Date.now();
-          localStorage.setItem(USER_ID_STORAGE_KEY, id);
-        }
-        return id;
-      }
+      const protectedRoutes = new Set(['/chat', '/evaluator-nis2', '/calendly']);
 
-      function getAuthToken() {
-        return sessionStorage.getItem(AUTH_STORAGE_KEY);
-      }
-
-      function setAuthToken(username, password) {
-        sessionStorage.setItem(AUTH_STORAGE_KEY, btoa(`${username}:${password}`));
-      }
-
-      function clearAuthToken() {
-        sessionStorage.removeItem(AUTH_STORAGE_KEY);
-      }
-
-      function showLogin(message = "") {
-        loginScreen.hidden = false;
-        chatScreen.hidden = true;
-        loginError.textContent = message;
-      }
-
-      function showChat() {
-        loginScreen.hidden = true;
-        chatScreen.hidden = false;
-        loginError.textContent = "";
-      }
-
-      async function verifyCredentials(username, password) {
-        const res = await fetch("/.netlify/functions/login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ username, password }),
+      async function api(path, options = {}) {
+        const res = await fetch(`/.netlify/functions/${path}`, {
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+          ...options,
         });
-
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          throw new Error(data.error || "Logowanie nie powiodlo sie.");
-        }
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || 'Request failed');
+        return data;
       }
 
-      const userId = getOrCreateUserId();
+      function navigate(path) { history.pushState({}, '', path); render(); }
+      window.addEventListener('popstate', render);
 
-      const options = {
-        api: {
-          async getClientSecret(currentClientSecret) {
-            const authToken = getAuthToken();
-            if (!authToken) {
-              throw new Error("Brak sesji logowania. Zaloguj sie ponownie.");
-            }
+      async function loadMe() {
+        try { const data = await api('me', { method: 'GET' }); me = data.user; }
+        catch { me = null; }
+      }
 
-            const res = await fetch("/.netlify/functions/chatkit-session", {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                Authorization: `Basic ${authToken}`,
-              },
-              body: JSON.stringify({
-                user: userId,
-                currentClientSecret: currentClientSecret || null,
-              }),
-            });
+      function accessOk() {
+        return Boolean(me?.has_access);
+      }
 
-            if (!res.ok) {
-              const data = await res.json().catch(() => ({}));
-              if (res.status === 401) {
-                clearAuthToken();
-                showLogin("Sesja wygasla. Zaloguj sie ponownie.");
-              }
-              throw new Error(data.error || "Nie udalo sie pobrac client_secret.");
-            }
-
-            const data = await res.json();
-            return data.client_secret;
-          },
-        },
-
-        theme: {
-          colorScheme: "light",
-          radius: "pill",
-          density: "compact",
-          typography: {
-            baseSize: 15,
-            fontFamily:
-              '"OpenAI Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif',
-            fontFamilyMono:
-              'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "DejaVu Sans Mono", "Courier New", monospace',
-            fontSources: [
-              {
-                family: "OpenAI Sans",
-                src: "https://cdn.openai.com/common/fonts/openai-sans/v2/OpenAISans-Regular.woff2",
-                weight: 400,
-                style: "normal",
-                display: "swap",
-              },
-            ],
-          },
-        },
-
-         composer: {
-          attachments: {
-            enabled: true,
-            maxCount: 5,
-            maxSize: 10485760,
-          },
-
-      /*  composer: {
-          attachments: {
-            enabled: true,
-           uploadStrategy: { type: "hosted" },
-            maxCount: 5,
-            maxSize: 10485760,
-            accept: {
-              "application/pdf": [".pdf"],
-              "text/plain": [".txt", ".md", ".csv"],
-              "image/*": [".png", ".jpg", ".jpeg", ".webp"],
-            },
-          },*/
-
-        
-          tools: [
-            {
-              id: "search_docs",
-              label: "Search docs",
-              shortLabel: "Docs",
-              placeholderOverride: "Search documentation",
-              icon: "circle-question",
-              pinned: false,
-            },
-          ],
-        },
-
-        startScreen: {
-          greeting: "",
-          prompts: [
-            {
-              icon: "circle-question",
-              label: "Czy moja firma podlega pod NIS2 i jak to sprawdzić?",
-              prompt: "Czy moja firma podlega pod NIS2 i jak to sprawdzić?",
-            },
-            
-            {
-              icon: "circle-question",
-              label: "Jakie są 3 najważniejsze obowiązki w NIS2 dla zarządu?",
-              prompt: "Jakie są 3 najważniejsze obowiązki w NIS2 dla zarządu?",
-            },
-
-            {
-              icon: "circle-question",
-              label: "Jakie są podstawowe wymagania ciągłości działania (ISO 22301) i od czego zacząć?",
-              prompt: "Jakie są podstawowe wymagania ciągłości działania (ISO 22301) i od czego zacząć?",
-            },
-            
-            {
-              icon: "circle-question",
-              label: "Jakie minimum dokumentów (polityki/procedury) potrzebujemy na start pod NIS2?",
-              prompt: "Jakie minimum dokumentów (polityki/procedury) potrzebujemy na start pod NIS2?",
-            },
-
-            {
-              icon: "circle-question",
-              label: "Czy za brak spełnienia wymagań NIS2 firmie grożą jakieś kary?",
-              prompt: "Czy za brak spełnienia wymagań NIS2 firmie grożą jakieś kary?",
-            },
-
-            
-          ],
-        },
-      };
+      function shell(content) {
+        if (!me) return `<main class='content'>${content}</main>`;
+        const links = [
+          ['/chat','Chat'], ['/evaluator-nis2','Evaluator NIS2'], ['/calendly','Calendly'], ['/pricing','Pricing'], ['/account','Account']
+        ];
+        return `<div class='layout'><aside class='sidebar'><h3>Menu</h3>${links.map(([href,label])=>`<a href='${href}' data-link class='${location.pathname===href?'active':''}'>${label}</a>`).join('')}<button id='logout'>Wyloguj</button></aside><main class='content'>${content}</main></div>`;
+      }
 
       async function mountChat() {
-        if (chatMounted) {
-          return;
-        }
-
-        await customElements.whenDefined("openai-chatkit");
-        const chatkit = document.getElementById("my-chat");
-
-        chatkit.addEventListener("chatkit.error", (e) => {
-          console.error("CHATKIT ERROR:", e.detail?.error || e);
-          alert("ChatKit error: " + (e.detail?.error?.message || "sprawdz Console"));
+        if (chatMounted) return;
+        await customElements.whenDefined('openai-chatkit');
+        const chatkit = document.getElementById('my-chat');
+        const userId = `user_${me.id}`;
+        chatkit.setOptions({
+          api: {
+            async getClientSecret(currentClientSecret) {
+              const data = await api('chatkit-session', { method: 'POST', body: JSON.stringify({ user: userId, currentClientSecret }) });
+              return data.client_secret;
+            }
+          },
+          theme: { colorScheme: 'light', radius: 'pill', density: 'compact' },
+          composer: { attachments: { enabled: true, maxCount: 5, maxSize: 10485760 } },
+          startScreen: { greeting: '', prompts: [{ icon:'circle-question', label:'Czy moja firma podlega pod NIS2 i jak to sprawdzić?', prompt:'Czy moja firma podlega pod NIS2 i jak to sprawdzić?' }] }
         });
-
-        chatkit.setOptions(options);
         chatMounted = true;
       }
 
-      async function startChat() {
-        showChat();
+      function bindGlobalHandlers() {
+        document.querySelectorAll('[data-link]').forEach((el)=>el.addEventListener('click',(e)=>{e.preventDefault(); navigate(el.getAttribute('href'));}));
+        const logout = document.getElementById('logout');
+        if (logout) logout.onclick = async () => { await api('logout', { method: 'POST' }); me = null; navigate('/login'); };
 
-        try {
-          await mountChat();
-        } catch (err) {
-          console.error(err);
-          clearAuthToken();
-          showLogin("Nie udalo sie uruchomic chatu. Zaloguj sie ponownie.");
-        }
-      }
+        const loginForm = document.getElementById('login-form');
+        if (loginForm) loginForm.onsubmit = async (e) => {
+          e.preventDefault();
+          const email = loginForm.email.value; const password = loginForm.password.value;
+          try { await api('login', { method: 'POST', body: JSON.stringify({ email, password }) }); await loadMe(); navigate('/chat'); }
+          catch (err) { document.getElementById('form-error').textContent = err.message; }
+        };
 
-      loginForm.addEventListener("submit", async (event) => {
-        event.preventDefault();
+        const registerForm = document.getElementById('register-form');
+        if (registerForm) registerForm.onsubmit = async (e) => {
+          e.preventDefault();
+          const email = registerForm.email.value; const password = registerForm.password.value;
+          try { await api('register', { method: 'POST', body: JSON.stringify({ email, password }) }); await loadMe(); navigate('/chat'); }
+          catch (err) { document.getElementById('form-error').textContent = err.message; }
+        };
 
-        const username = document.getElementById("username").value.trim();
-        const password = document.getElementById("password").value;
-
-        if (!username || !password) {
-          showLogin("Wpisz user i haslo.");
-          return;
-        }
-
-        try {
-          await verifyCredentials(username, password);
-          setAuthToken(username, password);
-          await startChat();
-        } catch (err) {
-          clearAuthToken();
-          showLogin(err.message || "Logowanie nie powiodlo sie.");
-        }
-      });
-
-      logoutBtn.addEventListener("click", () => {
-        clearAuthToken();
-        showLogin();
-      });
-
-      if (getAuthToken()) {
-        startChat().catch((err) => {
-          console.error(err);
-          clearAuthToken();
-          showLogin("Sesja wygasla. Zaloguj sie ponownie.");
+        document.querySelectorAll('[data-plan]').forEach((btn) => btn.onclick = async () => {
+          const plan = btn.getAttribute('data-plan');
+          try {
+            const data = await api('billing-checkout', { method: 'POST', body: JSON.stringify({ plan }) });
+            location.href = data.url;
+          } catch (err) { alert(err.message); }
         });
-      } else {
-        showLogin();
       }
+
+      async function render() {
+        await loadMe();
+        const path = location.pathname;
+        if (protectedRoutes.has(path) && !me) return navigate('/login');
+        if (protectedRoutes.has(path) && me && !accessOk()) return navigate('/pricing?reason=no_access');
+
+        let content = '';
+        if (path === '/login') {
+          content = `<div class='card'><h1>Logowanie</h1><form id='login-form'><label>Email</label><input name='email' type='email' required/><label>Hasło</label><input name='password' type='password' required/><button class='primary'>Zaloguj</button><p id='form-error' style='color:#b91c1c'></p><p class='muted'>Nie masz konta? <a href='/register' data-link>Zarejestruj się</a></p></form></div>`;
+        } else if (path === '/register') {
+          content = `<div class='card'><h1>Rejestracja</h1><form id='register-form'><label>Email</label><input name='email' type='email' required/><label>Hasło</label><input name='password' type='password' minlength='8' required/><button class='primary'>Utwórz konto</button><p id='form-error' style='color:#b91c1c'></p></form><p class='muted'>Po rejestracji dostajesz trial 24h.</p></div>`;
+        } else if (path === '/chat') {
+          content = `<h1>Chat</h1><div id='chat-wrap'><openai-chatkit id='my-chat'></openai-chatkit></div>`;
+        } else if (path === '/evaluator-nis2') {
+          content = `<div class='card'><h1>Evaluator NIS2</h1><p>Wkrótce.</p></div>`;
+        } else if (path === '/calendly') {
+          content = `<div class='card'><h1>Calendly</h1><p>Wkrótce.</p></div>`;
+        } else if (path === '/pricing') {
+          const reason = new URLSearchParams(location.search).get('reason');
+          content = `<div class='card'><h1>Cennik</h1>${reason==='no_access' ? "<p style='color:#b91c1c'>Brak aktywnego dostępu. Wybierz plan.</p>" : ''}<p>Trial 1 dzień po rejestracji.</p><div class='row'><button class='primary' data-plan='weekly'>Kup tygodniowy (199 PLN)</button><button class='primary' data-plan='monthly'>Kup miesięczny (499 PLN)</button></div></div>`;
+        } else if (path === '/account') {
+          if (!me) return navigate('/login');
+          content = `<div class='card'><h1>Account</h1><p><b>Email:</b> ${me.email}</p><p><b>Trial:</b> do ${me.trial_expires_at || '-'}</p><p><b>Plan:</b> ${me.plan || 'brak'}</p><p><b>Status subskrypcji:</b> ${me.subscription_status || 'brak'}</p><p><b>Dostęp aktywny:</b> ${me.has_access ? 'tak' : 'nie'}</p><div class='row'><button class='primary' data-plan='weekly'>Kup tygodniowy</button><button class='primary' data-plan='monthly'>Kup miesięczny</button></div></div>`;
+        } else if (path === '/billing/success') {
+          content = `<div class='card'><h1>Płatność zakończona</h1><p>Dziękujemy. Dostęp zostanie aktywowany po webhooku Stripe.</p><a href='/account' data-link>Przejdź do konta</a></div>`;
+        } else if (path === '/billing/cancel') {
+          content = `<div class='card'><h1>Płatność anulowana</h1><a href='/pricing' data-link>Wróć do cennika</a></div>`;
+        } else {
+          return navigate(me ? '/chat' : '/login');
+        }
+
+        document.getElementById('app').innerHTML = shell(content);
+        bindGlobalHandlers();
+        if (path === '/chat' && me) mountChat();
+      }
+
+      render();
     </script>
   </body>
 </html>

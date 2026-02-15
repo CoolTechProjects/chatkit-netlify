@@ -1,104 +1,46 @@
+import { badMethod, json, readJson } from './_lib/http.mjs';
+import { getUserBySession } from './_lib/session.mjs';
+import { hasActiveAccess } from './_lib/access.mjs';
 
 export default async (req) => {
-  if (req.method !== "POST") {
-    return new Response("Method Not Allowed", { status: 405 });
-  }
+  if (req.method !== 'POST') return badMethod();
 
-  const expectedUser = Netlify.env.get("BASIC_USER");
-  const expectedPass = Netlify.env.get("BASIC_PASS");
+  const session = getUserBySession(req);
+  if (!session) return json({ error: 'Unauthorized' }, 401);
+  if (!hasActiveAccess(session.user)) return json({ error: 'Brak aktywnego dostepu.' }, 402);
 
-  if (!expectedUser || !expectedPass) {
-    return new Response(
-      JSON.stringify({ error: "Brak BASIC_USER lub BASIC_PASS w Netlify." }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
-    );
-  }
-
-  const authHeader = req.headers.get("authorization") || "";
-  const [scheme, encoded] = authHeader.split(" ");
-
-  if (scheme !== "Basic" || !encoded) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: {
-        "Content-Type": "application/json",
-        "WWW-Authenticate": 'Basic realm="chatkit"',
-      },
-    });
-  }
-
-  let username = "";
-  let password = "";
-  try {
-    const decoded = Buffer.from(encoded, "base64").toString("utf8");
-    const separatorIndex = decoded.indexOf(":");
-    if (separatorIndex === -1) {
-      throw new Error("Invalid auth payload");
-    }
-    username = decoded.slice(0, separatorIndex);
-    password = decoded.slice(separatorIndex + 1);
-  } catch {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
-  if (username !== expectedUser || password !== expectedPass) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
-  const { user } = await req.json().catch(() => ({}));
-
-  const apiKey = Netlify.env.get("OPENAI_API_KEY");
-  const workflowId = Netlify.env.get("CHATKIT_WORKFLOW_ID");
+  const { user } = await readJson(req);
+  const apiKey = process.env.OPENAI_API_KEY || Netlify.env.get('OPENAI_API_KEY');
+  const workflowId = process.env.CHATKIT_WORKFLOW_ID || Netlify.env.get('CHATKIT_WORKFLOW_ID');
 
   if (!apiKey || !workflowId) {
-    return new Response(
-      JSON.stringify({ error: "Brak OPENAI_API_KEY lub CHATKIT_WORKFLOW_ID w Netlify." }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
-    );
+    return json({ error: 'Brak OPENAI_API_KEY lub CHATKIT_WORKFLOW_ID.' }, 500);
   }
 
-  const userId = user || "anonymous";
+  const userId = user || `user_${session.user.id}`;
 
-  const resp = await fetch("https://api.openai.com/v1/chatkit/sessions", {
-    method: "POST",
+  const resp = await fetch('https://api.openai.com/v1/chatkit/sessions', {
+    method: 'POST',
     headers: {
-      "Content-Type": "application/json",
-      "OpenAI-Beta": "chatkit_beta=v1",
-      "Authorization": `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      'OpenAI-Beta': 'chatkit_beta=v1',
+      Authorization: `Bearer ${apiKey}`,
     },
- //ddodawanie plików, był błąd 400
     body: JSON.stringify({
       workflow: { id: workflowId },
       user: userId,
-
-        chatkit_configuration: {
-    file_upload: {
-      enabled: true,
-      max_files: 5,      // spójnie z UI
-      max_file_size: 10  // MB (spójnie z 10MB w UI)
-    }
-  }
-      
+      chatkit_configuration: {
+        file_upload: {
+          enabled: true,
+          max_files: 5,
+          max_file_size: 10,
+        },
+      },
     }),
   });
 
   const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) return json(data, resp.status);
 
-  if (!resp.ok) {
-    return new Response(JSON.stringify(data), {
-      status: resp.status,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
-  return new Response(JSON.stringify({ client_secret: data.client_secret }), {
-    status: 200,
-    headers: { "Content-Type": "application/json" },
-  });
+  return json({ client_secret: data.client_secret });
 };
