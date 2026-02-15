@@ -1,3 +1,4 @@
+
 export default async (req) => {
   if (req.method !== "POST") {
     return new Response("Method Not Allowed", { status: 405 });
@@ -71,9 +72,19 @@ export default async (req) => {
       "OpenAI-Beta": "chatkit_beta=v1",
       "Authorization": `Bearer ${apiKey}`,
     },
+ //ddodawanie plików, był błąd 400
     body: JSON.stringify({
       workflow: { id: workflowId },
       user: userId,
+
+        chatkit_configuration: {
+    file_upload: {
+      enabled: true,
+      max_files: 5,      // spójnie z UI
+      max_file_size: 10  // MB (spójnie z 10MB w UI)
+    }
+  }
+      
     }),
   });
 
