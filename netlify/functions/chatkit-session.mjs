@@ -3,9 +3,55 @@ export default async (req) => {
     return new Response("Method Not Allowed", { status: 405 });
   }
 
+  const expectedUser = Netlify.env.get("BASIC_USER");
+  const expectedPass = Netlify.env.get("BASIC_PASS");
+
+  if (!expectedUser || !expectedPass) {
+    return new Response(
+      JSON.stringify({ error: "Brak BASIC_USER lub BASIC_PASS w Netlify." }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  const authHeader = req.headers.get("authorization") || "";
+  const [scheme, encoded] = authHeader.split(" ");
+
+  if (scheme !== "Basic" || !encoded) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: {
+        "Content-Type": "application/json",
+        "WWW-Authenticate": 'Basic realm="chatkit"',
+      },
+    });
+  }
+
+  let username = "";
+  let password = "";
+  try {
+    const decoded = Buffer.from(encoded, "base64").toString("utf8");
+    const separatorIndex = decoded.indexOf(":");
+    if (separatorIndex === -1) {
+      throw new Error("Invalid auth payload");
+    }
+    username = decoded.slice(0, separatorIndex);
+    password = decoded.slice(separatorIndex + 1);
+  } catch {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  if (username !== expectedUser || password !== expectedPass) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
   const { user } = await req.json().catch(() => ({}));
 
-  // Netlify Functions: env w runtime przez Netlify.env :contentReference[oaicite:6]{index=6}
   const apiKey = Netlify.env.get("OPENAI_API_KEY");
   const workflowId = Netlify.env.get("CHATKIT_WORKFLOW_ID");
 
@@ -16,7 +62,6 @@ export default async (req) => {
     );
   }
 
-  // OpenAI zaleca, żeby `user` był unikalny per użytkownik końcowy :contentReference[oaicite:7]{index=7}
   const userId = user || "anonymous";
 
   const resp = await fetch("https://api.openai.com/v1/chatkit/sessions", {
